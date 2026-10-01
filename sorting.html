@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sorting Visualizer — Algorithm Visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0d1117; --panel:#141b24; --panel2:#1b2430; --line:#26313f;
+  --text:#dbe4ee; --muted:#7c8ba1;
+  --amber:#e8a33d; --teal:#4fd1c5; --coral:#e8674f; --violet:#8a7cf0;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){ --ink:#0d1117; --panel:#141b24; }
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--ink);color:var(--text);font-family:'Inter',sans-serif;min-height:100%;}
+h1,h2,h3{font-family:'JetBrains Mono',monospace;margin:0;letter-spacing:-.02em}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+header h1{font-size:1.4rem;font-weight:700;color:var(--text)}
+header h1 span{color:var(--amber)}
+header p{margin:4px 0 0;color:var(--muted);font-size:.85rem;max-width:46ch}
+
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:2px}
+nav.tabs button{background:none;border:none;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.8rem;padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent;transition:color .15s}
+nav.tabs button:hover{color:var(--text)}
+nav.tabs button.active{color:var(--amber);border-color:var(--amber)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px}
+.controls{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:16px;font-size:.8rem;color:var(--muted)}
+.controls label{display:flex;align-items:center;gap:8px}
+.controls input[type=range]{accent-color:var(--amber)}
+button.action{font-family:'JetBrains Mono',monospace;background:var(--amber);color:#1a1305;border:none;border-radius:6px;padding:9px 16px;font-size:.78rem;font-weight:700;cursor:pointer;letter-spacing:.02em}
+button.action.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+button.action:disabled{opacity:.5;cursor:not-allowed}
+button.action:focus-visible, nav.tabs button:focus-visible, select:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+
+#stage{height:340px;display:flex;align-items:flex-end;gap:3px;padding:10px 6px;overflow-x:auto}
+.bar{flex:1;min-width:4px;background:var(--teal);border-radius:2px 2px 0 0;transition:height .05s linear}
+.bar.compare{background:var(--amber)}
+.bar.swap{background:var(--coral)}
+.bar.sorted{background:var(--violet)}
+
+#grid{display:grid;gap:2px;margin:0 auto;width:fit-content}
+.cell{width:22px;height:22px;background:var(--panel2);border-radius:2px;cursor:pointer}
+.cell.wall{background:#3a4658}
+.cell.start{background:var(--teal)}
+.cell.end{background:var(--coral)}
+.cell.visited{background:rgba(79,209,197,.35)}
+.cell.path{background:var(--amber)}
+
+.desc{margin-top:16px;font-size:.88rem;line-height:1.6;color:var(--muted);max-width:70ch}
+.desc b{color:var(--text)}
+.hint{font-size:.75rem;color:var(--muted);margin-top:10px}
+footer{text-align:center;color:var(--muted);font-size:.75rem;margin-top:40px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Sort<span>scape</span></h1>
+      <p>Watch how classic sorting and pathfinding algorithms move, step by step.</p>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-mode="bubble" class="active">Bubble Sort</button>
+    <button data-mode="selection">Selection Sort</button>
+    <button data-mode="insertion">Insertion Sort</button>
+    <button data-mode="quick">Quick Sort</button>
+    <button data-mode="path">Pathfinder</button>
+  </nav>
+
+  <div class="panel">
+    <div class="controls" id="sortControls">
+      <label>Size <input type="range" id="size" min="10" max="90" value="40"></label>
+      <label>Speed <input type="range" id="speed" min="1" max="100" value="60"></label>
+      <button class="action secondary" id="shuffle">Shuffle</button>
+      <button class="action" id="run">Run</button>
+    </div>
+    <div class="controls" id="pathControls" style="display:none">
+      <span>Click to draw walls · drag <b style="color:var(--teal)">start</b> / <b style="color:var(--coral)">end</b></span>
+      <button class="action secondary" id="clearWalls">Clear walls</button>
+      <button class="action" id="runPath">Find path (BFS)</button>
+    </div>
+
+    <div id="stage"></div>
+    <div id="gridWrap" style="display:none;padding:14px 0"><div id="grid"></div></div>
+
+    <p class="desc" id="desc"></p>
+  </div>
+
+  <footer>Sortscape — an original algorithm visualizer built for learning by watching.</footer>
+</div>
+
+<script>
+const descs = {
+  bubble: "<b>Bubble sort</b> repeatedly steps through the list, comparing each pair of neighbors and swapping them if they're in the wrong order. Each full pass bubbles the largest remaining value to its correct place, so the list gets sorted from the back forward.",
+  selection: "<b>Selection sort</b> splits the array into a sorted and unsorted region. On each pass it scans the unsorted region for the smallest value and swaps it into place at the front, growing the sorted region by one element at a time.",
+  insertion: "<b>Insertion sort</b> builds the sorted array one element at a time. It takes the next value and slides it backward past any larger elements until it lands in its correct position — like sorting playing cards in your hand.",
+  quick: "<b>Quick sort</b> picks a pivot value and partitions the array so smaller elements land left of it and larger ones land right. It then recurses on each partition, converging on a fully sorted array.",
+  path: "<b>Breadth-first search</b> explores the grid outward in rings, one step at a time from the start cell, guaranteeing the shortest path (in steps) to the end cell once it's found. Draw walls to see how it routes around them."
+};
+
+let arr = [], size = 40, speedVal = 60, running = false;
+const stage = document.getElementById('stage');
+const descEl = document.getElementById('desc');
+const sizeInput = document.getElementById('size');
+const speedInput = document.getElementById('speed');
+
+function delay(){ return new Promise(r => setTimeout(r, 210 - speedVal*2)); }
+
+function randArr(n){ return Array.from({length:n}, () => 10 + Math.floor(Math.random()*290)); }
+
+function render(compare=[], swap=[], sorted=[]){
+  stage.innerHTML = '';
+  const maxV = Math.max(...arr);
+  arr.forEach((v,i) => {
+    const b = document.createElement('div');
+    b.className = 'bar' + (sorted.includes(i)?' sorted':compare.includes(i)?' compare':swap.includes(i)?' swap':'');
+    b.style.height = (v/maxV*100)+'%';
+    stage.appendChild(b);
+  });
+}
+
+async function bubbleSort(){
+  const sorted = [];
+  for(let i=0;i<arr.length;i++){
+    for(let j=0;j<arr.length-i-1;j++){
+      if(!running) return;
+      render([j,j+1],[],sorted);
+      await delay();
+      if(arr[j] > arr[j+1]){
+        [arr[j],arr[j+1]] = [arr[j+1],arr[j]];
+        render([],[j,j+1],sorted);
+        await delay();
+      }
+    }
+    sorted.unshift(arr.length-1-i);
+  }
+  render([],[],[...Array(arr.length).keys()]);
+}
+
+async function selectionSort(){
+  const sorted = [];
+  for(let i=0;i<arr.length;i++){
+    let min = i;
+    for(let j=i+1;j<arr.length;j++){
+      if(!running) return;
+      render([min,j],[],sorted);
+      await delay();
+      if(arr[j] < arr[min]) min = j;
+    }
+    if(min !== i){
+      [arr[i],arr[min]] = [arr[min],arr[i]];
+      render([],[i,min],sorted);
+      await delay();
+    }
+    sorted.push(i);
+  }
+  render([],[],[...Array(arr.length).keys()]);
+}
+
+async function insertionSort(){
+  for(let i=1;i<arr.length;i++){
+    let j = i;
+    while(j>0 && arr[j-1] > arr[j]){
+      if(!running) return;
+      render([j-1,j]);
+      await delay();
+      [arr[j-1],arr[j]] = [arr[j],arr[j-1]];
+      j--;
+    }
+  }
+  render([],[],[...Array(arr.length).keys()]);
+}
+
+async function quickSort(lo=0, hi=arr.length-1){
+  if(lo>=hi){ if(lo===hi) render([],[],[lo]); return; }
+  if(!running) return;
+  let pivot = arr[hi], i = lo;
+  for(let j=lo;j<hi;j++){
+    if(!running) return;
+    render([j,hi]);
+    await delay();
+    if(arr[j] < pivot){
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+      render([],[i,j]);
+      await delay();
+      i++;
+    }
+  }
+  [arr[i],arr[hi]] = [arr[hi],arr[i]];
+  render([],[i,hi]);
+  await delay();
+  await quickSort(lo, i-1);
+  await quickSort(i+1, hi);
+  if(lo===0 && hi===arr.length-1) render([],[],[...Array(arr.length).keys()]);
+}
+
+const algos = {bubble:bubbleSort, selection:selectionSort, insertion:insertionSort, quick:quickSort};
+
+function resetArr(){ arr = randArr(size); render(); }
+
+document.getElementById('shuffle').onclick = () => { running=false; resetArr(); };
+document.getElementById('size').oninput = e => { size = +e.target.value; resetArr(); };
+document.getElementById('speed').oninput = e => { speedVal = +e.target.value; };
+
+let currentMode = 'bubble';
+document.getElementById('run').onclick = async () => {
+  if(running) return;
+  running = true;
+  document.getElementById('run').disabled = true;
+  await algos[currentMode]();
+  running = false;
+  document.getElementById('run').disabled = false;
+};
+
+// --- Pathfinder ---
+const ROWS=15, COLS=30;
+let grid=[], startCell={r:7,c:4}, endCell={r:7,c:25}, dragging=null, pathRunning=false;
+const gridEl = document.getElementById('grid');
+gridEl.style.gridTemplateColumns = `repeat(${COLS}, 22px)`;
+
+function buildGrid(){
+  grid = Array.from({length:ROWS}, () => Array(COLS).fill(0));
+  gridEl.innerHTML = '';
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const cell = document.createElement('div');
+      cell.className='cell';
+      cell.dataset.r=r; cell.dataset.c=c;
+      cell.addEventListener('mousedown', e => {
+        if(r===startCell.r && c===startCell.c) dragging='start';
+        else if(r===endCell.r && c===endCell.c) dragging='end';
+        else { grid[r][c] = grid[r][c]?0:1; drawGrid(); dragging='wall'; }
+      });
+      cell.addEventListener('mouseenter', () => {
+        if(dragging==='start'){ startCell={r,c}; drawGrid(); }
+        else if(dragging==='end'){ endCell={r,c}; drawGrid(); }
+        else if(dragging==='wall' && !(r===startCell.r&&c===startCell.c) && !(r===endCell.r&&c===endCell.c)){ grid[r][c]=1; drawGrid(); }
+      });
+      gridEl.appendChild(cell);
+    }
+  }
+  window.addEventListener('mouseup', () => dragging=null);
+  drawGrid();
+}
+
+function drawGrid(cls={}){
+  const cells = gridEl.children;
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const el = cells[r*COLS+c];
+      el.className = 'cell' +
+        (grid[r][c]?' wall':'') +
+        (r===startCell.r&&c===startCell.c?' start':'') +
+        (r===endCell.r&&c===endCell.c?' end':'') +
+        (cls.visited && cls.visited.has(r+','+c)?' visited':'') +
+        (cls.path && cls.path.has(r+','+c)?' path':'');
+    }
+  }
+}
+
+document.getElementById('clearWalls').onclick = () => { grid = Array.from({length:ROWS}, () => Array(COLS).fill(0)); drawGrid(); };
+
+async function bfs(){
+  if(pathRunning) return;
+  pathRunning = true;
+  const visited = new Set([startCell.r+','+startCell.c]);
+  const prev = {};
+  const q = [startCell];
+  let found=false;
+  while(q.length){
+    const {r,c} = q.shift();
+    if(r===endCell.r && c===endCell.c){ found=true; break; }
+    for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nr=r+dr, nc=c+dc, key=nr+','+nc;
+      if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&!grid[nr][nc]&&!visited.has(key)){
+        visited.add(key); prev[key]=r+','+c; q.push({r:nr,c:nc});
+        drawGrid({visited});
+        await new Promise(res=>setTimeout(res,8));
+      }
+    }
+  }
+  if(found){
+    const path = new Set();
+    let cur = endCell.r+','+endCell.c;
+    while(cur && cur!==startCell.r+','+startCell.c){ path.add(cur); cur = prev[cur]; }
+    drawGrid({visited,path});
+  }
+  pathRunning=false;
+}
+document.getElementById('runPath').onclick = bfs;
+
+// --- Tabs ---
+const tabs = document.querySelectorAll('nav.tabs button');
+tabs.forEach(btn => btn.addEventListener('click', () => {
+  tabs.forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentMode = btn.dataset.mode;
+  running=false; pathRunning=false;
+  descEl.innerHTML = descs[currentMode];
+  const isPath = currentMode==='path';
+  document.getElementById('sortControls').style.display = isPath?'none':'flex';
+  document.getElementById('pathControls').style.display = isPath?'flex':'none';
+  stage.style.display = isPath?'none':'flex';
+  document.getElementById('gridWrap').style.display = isPath?'block':'none';
+  if(!isPath) resetArr();
+}));
+
+descEl.innerHTML = descs.bubble;
+resetArr();
+buildGrid();
+</script>
+</body>
+</html>
